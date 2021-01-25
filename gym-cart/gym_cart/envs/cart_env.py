@@ -4,6 +4,12 @@ Copied from http://incompleteideas.net/sutton/book/code/pole.c
 permalink: https://perma.cc/C9ZM-652R
 """
 
+"""
+NEXT STEPS 1/24
+ - IMPROVE CONTINUOUS MOTION ALWAYS
+ - ADD OBSTACLE
+"""
+
 import math
 import gym
 from gym import spaces, logger
@@ -50,9 +56,9 @@ class CartEnv(gym.Env):
 
     def __init__(self):
         self.length = 0.15  # distance between point a and b
-        self.force_mag_a = 1  # increase speed
+        self.force_mag_a = 1  # increase speed LOOK INTO THE JETBOT MOVEMENT CODE
         self.force_mag_b = 1  # increase speed
-        self.tau = 0.02  # seconds between state updates
+        self.tau = 0.01  # seconds between state updates INCREASE = FASTER MOVEMENTS
         self.thetaCurr = 0 # initial and current angle
         self.kinematics_integrator = 'euler'
 
@@ -67,6 +73,7 @@ class CartEnv(gym.Env):
                          np.finfo(np.float32).max, 0, 0, 0],
                         dtype=np.float32)
 
+        # LOOK INTO
         self.action_space = spaces.Discrete(3)
         self.observation_space = spaces.Box(-high, high, dtype=np.float32)
 
@@ -105,12 +112,6 @@ class CartEnv(gym.Env):
         sintheta = math.sin(theta)
 
         if self.kinematics_integrator == 'euler':
-            xa = xa + va * costheta * self.tau
-            ya = ya + va * sintheta * self.tau
-            xb = xb + vb * costheta * self.tau
-            yb = yb + vb * sintheta * self.tau
-            theta = sol.y[0][-1]
-        else:  # semi-implicit euler
             xa = xa + va * costheta * self.tau
             ya = ya + va * sintheta * self.tau
             xb = xb + vb * costheta * self.tau
@@ -164,22 +165,27 @@ class CartEnv(gym.Env):
         cartwidth = 20.0
         cartheight = 10.0
 
+        va, vb, theta, xa, xb, ya, yb = self.state
+
         if self.viewer is None:
             from gym.envs.classic_control import rendering
             self.viewer = rendering.Viewer(screen_width, screen_height)
-            l, r, t, b = -cartwidth / 2, cartwidth / 2, cartheight / 2, -cartheight / 2
-            cart = rendering.FilledPolygon([(l, b), (l, t), (r, t), (r, b)])
+            l, r, t, b, c = -cartwidth / 2, cartwidth / 2, cartheight / 2, -cartheight / 2, (xa+xb)/2
+            cart = rendering.FilledPolygon([(l, b), (c, t), (r, b)])
             self.carttrans = rendering.Transform()
             cart.add_attr(self.carttrans)
             self.viewer.add_geom(cart)
+            obst1 = rendering.FilledPolygon([(xa*scale + screen_width, ya* scale + screen_height), (2*xa*scale + screen_width, ya* scale + screen_height), (xa*scale + screen_width, 2*ya* scale + screen_height)])
+            self.viewer.add_geom(obst1)
 
         if self.state is None:
             return None
 
-        x = self.state
-        cartx = ((x[3] + x[4]) * scale + screen_width) / 2.0  # MIDDLE OF CART
-        carty = ((x[5] + x[6]) * scale + screen_height) / 2.0  # MIDDLE OF CART
+
+        cartx = ((xa + xb) * scale + screen_width) / 2.0  # MIDDLE OF CART
+        carty = ((ya + yb) * scale + screen_height) / 2.0  # MIDDLE OF CART
         self.carttrans.set_translation(cartx, carty)
+        self.carttrans.set_rotation(theta)
 
         return self.viewer.render(return_rgb_array=mode == 'rgb_array')
 

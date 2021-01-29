@@ -19,7 +19,7 @@ import gym_cart
 BATCH_SIZE = 32
 LR = 0.01                   # learning rate
 EPSILON = 0.9               # greedy policy
-GAMMA = 0.9                 # reward discount
+GAMMA = 0.1                 # reward discount: 0 shortsighted to 1 farsighted
 TARGET_REPLACE_ITER = 100   # target update frequency
 MEMORY_CAPACITY = 2000
 env = gym.make('cart-v0')
@@ -100,7 +100,7 @@ class DQN(object):
 dqn = DQN()
 
 print('\nCollecting experience...')
-for i_episode in range(50):
+for i_episode in range(5):
     s = env.reset()
     ep_r = 0
     while True:
@@ -110,10 +110,10 @@ for i_episode in range(50):
         # take action
         s_, r, done, info = env.step(a)
 
-        # modify the reward
+        # modify the reward (why would we need to do this?)
         va, vb, theta, xa, xb, ya, yb = s_
-        r1 = (env.x_threshold - abs(xa)) / env.x_threshold
-        r2 = (env.y_threshold - abs(ya)) / env.x_threshold
+        r1 = (env.max_position - abs(xa)) / env.max_position
+        r2 = (env.max_position - abs(ya)) / env.max_position
         r = r1 + r2
 
         dqn.store_transition(s, a, r, s_)

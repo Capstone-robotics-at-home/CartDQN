@@ -5,9 +5,8 @@ permalink: https://perma.cc/C9ZM-652R
 """
 
 """
-NEXT STEPS 1/24
- - IMPROVE CONTINUOUS MOTION ALWAYS
- - ADD OBSTACLE
+NEXT STEPS 1/29
+ - NEW SCENARIOS: ADD OBSTACLE, GOAL
 """
 
 import math
@@ -16,29 +15,30 @@ from gym import spaces, logger
 from gym.utils import seeding
 from scipy.integrate import solve_ivp
 import numpy as np
+import Cart, Obstacle
+
+
 
 class CartEnv(gym.Env):
     """
     Description:
         Simple 2D cart motion along frictionless track. The cart starts at (0, 0) and wants to stay in bounds.
     Observation:
-        Type: Box(4) --> Box(7) ? ( this part I did not know how to edit correctly )
+        Type: Box(7)
         Num     Observation               Min                     Max
         0       Cart Position a             -10                     10
         1       Cart Velocity a            -1                      1
         2       Cart Velocity b            -10                      10
         3       Cart Velocity a            -1                      1
     Actions:
-        Type: Discrete(3)
+        Type: Continuous
         Num   Action
-        0     V a > V b
-        1     V a < V b
-        2     V a = V b
-        Note: The amount the velocity that is reduced or increased is not
-        fixed
+        0     Left motor (a) input force
+        1     Right motor (b) input force
+        Note: The amount the velocity that is increased is dependent on a scaling factor "power"
     Reward:
         Reward is 1 for every step taken, including the termination step
-    Starting State:
+    Starting State: (?)
         All observations are assigned a uniform random value in [-0.05..0.05]
     Episode Termination:
         Any cart Position is more than +/- 10 (sides of the cart reach the edge of
@@ -46,7 +46,7 @@ class CartEnv(gym.Env):
         Episode length is greater than 200. <-- did not set up yet
         Solved Requirements: <-- did not set up yet
         Considered solved when the average return is greater than or equal to
-        195.0 over 100 consecutive trials.
+        195.0 over 100 consecutive trials. <-- did not set up yet
     """
 
     metadata = {
@@ -55,27 +55,45 @@ class CartEnv(gym.Env):
     }
 
     def __init__(self):
-        self.length = 0.15  # distance between point a and b
-        self.force_mag_a = 1  # increase speed LOOK INTO THE JETBOT MOVEMENT CODE
-        self.force_mag_b = 1  # increase speed
-        self.tau = 0.01  # seconds between state updates INCREASE = FASTER MOVEMENTS
+        self.length = 0.15  # distance between point a and b NEED TO MEASURE IN METERS
+        self.power = 0.01 # scaling factor for actual distance NEED TO DETERMINE
+        self.tau = 1  # seconds between state updates INCREASE = FASTER MOVEMENTS
         self.thetaCurr = 0 # initial and current angle
+        # self.goal_x = 1
+        # self.goal_y = 1
         self.kinematics_integrator = 'euler'
 
-        # Threshold
-        self.x_threshold = 5
-        self.y_threshold = 5
+        # Action Thresholds
+        self.min_action = -1
+        self.max_action = 1
 
-        # Observation (unsure if this is right)
-        high = np.array([self.x_threshold * 2,
-                         np.finfo(np.float32).max,
-                         self.y_threshold * 2,
-                         np.finfo(np.float32).max, 0, 0, 0],
-                        dtype=np.float32)
+        # State Thresholds
+        self.max_position = 5
+        self.max_speed = 300 # need to understand scale better
+        self.max_angle = 180 # not sure if this is correct
 
-        # LOOK INTO
-        self.action_space = spaces.Discrete(3)
-        self.observation_space = spaces.Box(-high, high, dtype=np.float32)
+        self.low_state = np.array(
+            [-self.max_speed, -self.max_speed, -self.max_angle, -self.max_position,
+             -self.max_position, -self.max_position, -self.max_position]
+        )
+        self.high_state = np.array(
+            [-self.max_speed, -self.max_speed, -self.max_angle, -self.max_position,
+             -self.max_position, -self.max_position, -self.max_position]
+        )
+
+        # Action: continuous left, right motor control
+        self.action_space = spaces.Box(
+            low=self.min_action,
+            high=self.max_action,
+            shape=(2,),
+            dtype=np.float32
+        )
+
+        self.observation_space = spaces.Box(
+            low=self.low_state,
+            high=self.high_state,
+            dtype=np.float32
+        )
 
         self.seed()
         self.viewer = None
@@ -91,23 +109,24 @@ class CartEnv(gym.Env):
         err_msg = "%r (%s) invalid" % (action, type(action))
         assert self.action_space.contains(action), err_msg
 
-        va, vb, theta, xa, xb, ya, yb = self.state
-        if action == 0:
-            va = 3*self.force_mag_a
-            vb = self.force_mag_b
-        elif action == 1:
-            va = self.force_mag_a
-            vb = 3*self.force_mag_b
-        elif action == 2:
-            va = self.force_mag_a
-            vb = self.force_mag_b
+        va, vb, theta, xa, xb, ya, yb = self.state # define 7 states
 
+        # action on each motor
+        forcea = min(max(action[0], self.min_action), self.max_action)
+        forceb = min(max(action[1], self.min_action), self.max_action)
+
+        # scale accordingly
+        va = forcea * self.power
+        vb = forceb * self.power
+
+        # set up solver
         def sol_angle(t, y, vb, va):
             return (vb - va) / self.length
 
         t_span = [0, self.tau]
         sol = solve_ivp(sol_angle, t_span, [self.thetaCurr], args=(vb, va))
 
+        # determine angles for movement
         costheta = math.cos(theta)
         sintheta = math.sin(theta)
 
@@ -118,23 +137,39 @@ class CartEnv(gym.Env):
             yb = yb + vb * sintheta * self.tau
             theta = sol.y[0][-1]
 
+        # For Scenario 2, better way is find ave position from a and b
+        # if xa < -self.max_position: xa = -self.max_position
+        # if xa > self.max_position: xa = self.max_position
+        # if xb < -self.max_position: xa = -self.max_position
+        # if xb > self.max_position: xa = self.max_position
+        # if ya < -self.max_position: xa = -self.max_position
+        # if ya > self.max_position: xa = self.max_position
+        # if yb < -self.max_position: xa = -self.max_position
+        # if yb > self.max_position: xa = self.max_position
+
+        # update state
         self.thetaCurr = theta
         self.state = (va, vb, theta, xa, xb, ya, yb)
 
+        # Scenario 1: Stay inside a given box
         done = bool(
-            xa < -self.x_threshold
-            or xa > self.x_threshold
-            or xb < -self.x_threshold
-            or xb > self.x_threshold
-            or ya < -self.y_threshold
-            or ya > self.y_threshold
-            or yb < -self.y_threshold
-            or yb > self.y_threshold
+            xa < -self.max_position
+            or xa > self.max_position
+            or xb < -self.max_position
+            or xb > self.max_position
+            or ya < -self.max_position
+            or ya > self.max_position
+            or yb < -self.max_position
+            or yb > self.max_position
         )
+        # Scenario 2: Reach a target
+        # done = bool(
+        #     xa >= self.goal_x and ya >= self.goal_y
+        # )
 
         if not done:
             reward = 1.0
-        elif self.steps_beyond_done is None:
+        elif self.steps_beyond_done is None: # not sure what any of these conditions are
             # Cart just exited!
             self.steps_beyond_done = 0
             reward = 1.0
@@ -152,7 +187,7 @@ class CartEnv(gym.Env):
         return np.array(self.state), reward, done, {}
 
     def reset(self):
-        self.state = self.np_random.uniform(low=-0.05, high=0.05, size=(7,))
+        self.state = self.np_random.uniform(low=-0.05, high=0.05, size=(7,)) # need to look into
         self.steps_beyond_done = None
         return np.array(self.state)
 
@@ -160,27 +195,35 @@ class CartEnv(gym.Env):
         screen_width = 500
         screen_height = 500
 
-        world_width = self.x_threshold * 2
+        world_width = self.max_position * 2
         scale = screen_width/world_width
         cartwidth = 20.0
-        cartheight = 10.0
+        cartheight = 40.0
 
         va, vb, theta, xa, xb, ya, yb = self.state
 
         if self.viewer is None:
             from gym.envs.classic_control import rendering
             self.viewer = rendering.Viewer(screen_width, screen_height)
-            l, r, t, b, c = -cartwidth / 2, cartwidth / 2, cartheight / 2, -cartheight / 2, (xa+xb)/2
-            cart = rendering.FilledPolygon([(l, b), (c, t), (r, b)])
+
+            cart = Cart() # call method for Cart
             self.carttrans = rendering.Transform()
             cart.add_attr(self.carttrans)
             self.viewer.add_geom(cart)
-            obst1 = rendering.FilledPolygon([(xa*scale + screen_width, ya* scale + screen_height), (2*xa*scale + screen_width, ya* scale + screen_height), (xa*scale + screen_width, 2*ya* scale + screen_height)])
+
+            # goal = rendering.make_circle([self.goal_x * scale + screen_width, self.goal_y * scale + screen_height])
+            # goal.set_color(.8, .8, 0)
+            # self.viewer.add_geom(goal)
+
+            obst1 = Obstacle(scale)  # call method for Obstacle
+            # obst1 = rendering.FilledPolygon([(xa*scale + screen_width, ya* scale + screen_height), (2*xa*scale + screen_width, ya* scale + screen_height), (xa*scale + screen_width, 2*ya* scale + screen_height)])
+            self.obsttrans = rendering.Transform()
+            cart.add_attr(self.obsttrans)
             self.viewer.add_geom(obst1)
+
 
         if self.state is None:
             return None
-
 
         cartx = ((xa + xb) * scale + screen_width) / 2.0  # MIDDLE OF CART
         carty = ((ya + yb) * scale + screen_height) / 2.0  # MIDDLE OF CART

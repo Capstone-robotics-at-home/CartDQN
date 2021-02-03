@@ -19,14 +19,15 @@ import gym_cart
 BATCH_SIZE = 32
 LR = 0.01                   # learning rate
 EPSILON = 0.9               # greedy policy
-GAMMA = 0.1                 # reward discount: 0 shortsighted to 1 farsighted
+GAMMA = 0.9                 # reward discount: 0 shortsighted to 1 farsighted
 TARGET_REPLACE_ITER = 100   # target update frequency
 MEMORY_CAPACITY = 2000
 env = gym.make('cart-v0')
 env = env.unwrapped
+discrete = np.linspace(-1, 1, 10000)
 N_ACTIONS = env.action_space.n
 N_STATES = env.observation_space.shape[0]
-ENV_A_SHAPE = 0 if isinstance(env.action_space.sample(), int) else env.action_space.sample().shape     # to confirm the shape
+# ENV_A_SHAPE = 0 if isinstance(env.action_space.sample(), int) else env.action_space.sample().shape  # confirm the shape
 
 
 class Net(nn.Module):
@@ -112,9 +113,9 @@ for i_episode in range(5):
 
         # modify the reward (why would we need to do this?)
         va, vb, theta, xa, xb, ya, yb = s_
-        r1 = (env.max_position - abs(xa)) / env.max_position
-        r2 = (env.max_position - abs(ya)) / env.max_position
-        r = r1 + r2
+        # r1 = (env.max_position - abs(xa)) / env.max_position
+        # r2 = (env.max_position - abs(ya)) / env.max_position
+        # r = r1 + r2
 
         dqn.store_transition(s, a, r, s_)
 

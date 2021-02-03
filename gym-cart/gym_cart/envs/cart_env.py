@@ -15,8 +15,7 @@ from gym import spaces, logger
 from gym.utils import seeding
 from scipy.integrate import solve_ivp
 import numpy as np
-import Cart, Obstacle
-
+from .CartRender import Cart, Obstacle, Goal
 
 
 class CartEnv(gym.Env):
@@ -56,9 +55,9 @@ class CartEnv(gym.Env):
 
     def __init__(self):
         self.length = 0.15  # distance between point a and b NEED TO MEASURE IN METERS
-        self.power = 0.01 # scaling factor for actual distance NEED TO DETERMINE
-        self.tau = 1  # seconds between state updates INCREASE = FASTER MOVEMENTS
-        self.thetaCurr = 0 # initial and current angle
+        self.power = 1  # scaling factor for actual distance NEED TO DETERMINE
+        self.tau = 0.01  # seconds between state updates INCREASE = FASTER MOVEMENTS
+        self.thetaCurr = 0  # initial and current angle
         # self.goal_x = 1
         # self.goal_y = 1
         self.kinematics_integrator = 'euler'
@@ -69,8 +68,8 @@ class CartEnv(gym.Env):
 
         # State Thresholds
         self.max_position = 5
-        self.max_speed = 300 # need to understand scale better
-        self.max_angle = 180 # not sure if this is correct
+        self.max_speed = 300  # need to understand scale better
+        self.max_angle = 180  # not sure if this is correct
 
         self.low_state = np.array(
             [-self.max_speed, -self.max_speed, -self.max_angle, -self.max_position,
@@ -85,7 +84,7 @@ class CartEnv(gym.Env):
         self.action_space = spaces.Box(
             low=self.min_action,
             high=self.max_action,
-            shape=(2,),
+            shape=(2, ),
             dtype=np.float32
         )
 
@@ -97,7 +96,7 @@ class CartEnv(gym.Env):
 
         self.seed()
         self.viewer = None
-        self.state = None
+        self.state = np.zeros((7,1))
 
         self.steps_beyond_done = None
 
@@ -109,7 +108,7 @@ class CartEnv(gym.Env):
         err_msg = "%r (%s) invalid" % (action, type(action))
         assert self.action_space.contains(action), err_msg
 
-        va, vb, theta, xa, xb, ya, yb = self.state # define 7 states
+        va, vb, theta, xa, xb, ya, yb = self.state  # define 7 states
 
         # action on each motor
         forcea = min(max(action[0], self.min_action), self.max_action)
@@ -127,8 +126,8 @@ class CartEnv(gym.Env):
         sol = solve_ivp(sol_angle, t_span, [self.thetaCurr], args=(vb, va))
 
         # determine angles for movement
-        costheta = math.cos(theta)
-        sintheta = math.sin(theta)
+        costheta = math.cos(self.thetaCurr)
+        sintheta = math.sin(self.thetaCurr)
 
         if self.kinematics_integrator == 'euler':
             xa = xa + va * costheta * self.tau
@@ -169,7 +168,7 @@ class CartEnv(gym.Env):
 
         if not done:
             reward = 1.0
-        elif self.steps_beyond_done is None: # not sure what any of these conditions are
+        elif self.steps_beyond_done is None:  # not sure what any of these conditions are
             # Cart just exited!
             self.steps_beyond_done = 0
             reward = 1.0
@@ -187,7 +186,7 @@ class CartEnv(gym.Env):
         return np.array(self.state), reward, done, {}
 
     def reset(self):
-        self.state = self.np_random.uniform(low=-0.05, high=0.05, size=(7,)) # need to look into
+        self.state = self.np_random.uniform(low=-0.05, high=0.05, size=(7,))  # need to look into
         self.steps_beyond_done = None
         return np.array(self.state)
 
@@ -196,37 +195,44 @@ class CartEnv(gym.Env):
         screen_height = 500
 
         world_width = self.max_position * 2
-        scale = screen_width/world_width
+        scale = screen_width / world_width
         cartwidth = 20.0
         cartheight = 40.0
 
-        va, vb, theta, xa, xb, ya, yb = self.state
+        if self.state is not None:
+            va, vb, theta, xa, xb, ya, yb = self.state
 
         if self.viewer is None:
             from gym.envs.classic_control import rendering
             self.viewer = rendering.Viewer(screen_width, screen_height)
 
-            cart = Cart() # call method for Cart
+            # cart = rendering.FilledPolygon([(0, 0), (cartwidth, 0), (cartwidth/2, cartheight)])
+            # cart.add_attr(rendering.Transform(translation=(0, 0)))
+
+            cart = Cart()  # instantiate class instance
+            cart = cart.new()  # call method for Cart
             self.carttrans = rendering.Transform()
             cart.add_attr(self.carttrans)
             self.viewer.add_geom(cart)
 
-            # goal = rendering.make_circle([self.goal_x * scale + screen_width, self.goal_y * scale + screen_height])
-            # goal.set_color(.8, .8, 0)
-            # self.viewer.add_geom(goal)
-
-            obst1 = Obstacle(scale)  # call method for Obstacle
-            # obst1 = rendering.FilledPolygon([(xa*scale + screen_width, ya* scale + screen_height), (2*xa*scale + screen_width, ya* scale + screen_height), (xa*scale + screen_width, 2*ya* scale + screen_height)])
-            self.obsttrans = rendering.Transform()
-            cart.add_attr(self.obsttrans)
+            obst1 = Obstacle()  # instantiate class instance
+            obst1 = obst1.new()  # call method for Obstacle
+            self.obsttrans = rendering.Transform(translation=(screen_width/2, screen_height/2)) # set object position
+            obst1.add_attr(self.obsttrans)
             self.viewer.add_geom(obst1)
 
+            goal = Goal()  # instantiate class instance
+            goal = goal.new()  # call method for Goal
+            self.goaltrans = rendering.Transform(translation=(300, 300))
+            goal.set_color(.8, .8, 0)
+            goal.add_attr(self.goaltrans)
+            self.viewer.add_geom(goal)
 
         if self.state is None:
             return None
 
-        cartx = ((xa + xb) * scale + screen_width) / 2.0  # MIDDLE OF CART
-        carty = ((ya + yb) * scale + screen_height) / 2.0  # MIDDLE OF CART
+        cartx = (xa + xb) * scale + screen_width/2.0  #
+        carty = (ya + yb) * scale + screen_height/2.0  #
         self.carttrans.set_translation(cartx, carty)
         self.carttrans.set_rotation(theta)
 

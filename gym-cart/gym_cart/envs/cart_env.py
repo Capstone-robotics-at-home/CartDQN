@@ -63,8 +63,8 @@ class CartEnv(gym.Env):
         self.kinematics_integrator = 'euler'
 
         # Action Thresholds
-        self.min_action = -1
-        self.max_action = 1
+        self.min_action = 0
+        self.max_action = 100
 
         # State Thresholds
         self.max_position = 5
@@ -81,12 +81,7 @@ class CartEnv(gym.Env):
         )
 
         # Action: continuous left, right motor control
-        self.action_space = spaces.Box(
-            low=self.min_action,
-            high=self.max_action,
-            shape=(2, ),
-            dtype=np.float32
-        )
+        self.action_space = spaces.Discrete(201)
 
         self.observation_space = spaces.Box(
             low=self.low_state,
@@ -96,7 +91,7 @@ class CartEnv(gym.Env):
 
         self.seed()
         self.viewer = None
-        self.state = np.zeros((7,1))
+        self.state = np.zeros((7, 1)) # initial velocity always forward
 
         self.steps_beyond_done = None
 
@@ -105,17 +100,22 @@ class CartEnv(gym.Env):
         return [seed]
 
     def step(self, action):
-        err_msg = "%r (%s) invalid" % (action, type(action))
-        assert self.action_space.contains(action), err_msg
+        # err_msg = "%r (%s) invalid" % (action, type(action))
+        # assert self.action_space.contains(action), err_msg
 
         va, vb, theta, xa, xb, ya, yb = self.state  # define 7 states
 
         # action on each motor
-        forcea = min(max(action[0], self.min_action), self.max_action)
-        forceb = min(max(action[1], self.min_action), self.max_action)
+        # forcea = min(max(action[0], self.min_action), self.max_action)
+        # forceb = min(max(action[1], self.min_action), self.max_action)
+
+        forces = np.linspace(-1, 1, 201) # according to jetbot physical capabilities
+
+        forcea = forces[action[0]]
+        forceb = forces[action[1]]
 
         # scale accordingly
-        va = forcea * self.power
+        va = forcea * self.power # cm/s
         vb = forceb * self.power
 
         # set up solver
@@ -215,24 +215,24 @@ class CartEnv(gym.Env):
             cart.add_attr(self.carttrans)
             self.viewer.add_geom(cart)
 
-            obst1 = Obstacle()  # instantiate class instance
-            obst1 = obst1.new()  # call method for Obstacle
-            self.obsttrans = rendering.Transform(translation=(screen_width/2, screen_height/2)) # set object position
-            obst1.add_attr(self.obsttrans)
-            self.viewer.add_geom(obst1)
-
-            goal = Goal()  # instantiate class instance
-            goal = goal.new()  # call method for Goal
-            self.goaltrans = rendering.Transform(translation=(300, 300))
-            goal.set_color(.8, .8, 0)
-            goal.add_attr(self.goaltrans)
-            self.viewer.add_geom(goal)
+            # obst1 = Obstacle()  # instantiate class instance
+            # obst1 = obst1.new()  # call method for Obstacle
+            # self.obsttrans = rendering.Transform(translation=(screen_width/2, screen_height/2)) # set object position
+            # obst1.add_attr(self.obsttrans)
+            # self.viewer.add_geom(obst1)
+            #
+            # goal = Goal()  # instantiate class instance
+            # goal = goal.new()  # call method for Goal
+            # self.goaltrans = rendering.Transform(translation=(300, 300))
+            # goal.set_color(.8, .8, 0)
+            # goal.add_attr(self.goaltrans)
+            # self.viewer.add_geom(goal)
 
         if self.state is None:
             return None
 
-        cartx = (xa + xb) * scale + screen_width/2.0  #
-        carty = (ya + yb) * scale + screen_height/2.0  #
+        cartx = scale*(xa + xb)/2 + screen_width/2.0  #
+        carty = scale*(ya + yb)/2 + screen_height/2.0  #
         self.carttrans.set_translation(cartx, carty)
         self.carttrans.set_rotation(theta)
 

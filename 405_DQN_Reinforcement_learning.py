@@ -16,10 +16,10 @@ import gym
 import gym_cart
 
 # Hyper Parameters
-BATCH_SIZE = 32
-LR = 0.1                   # learning rate: 0.01
-EPSILON = 0.95               # greedy policy: 0.09
-GAMMA = 0.9                 # reward discount: 0 shortsighted to 1 farsighted
+BATCH_SIZE = 64             # batch size: default 32, 1 to 100+
+LR = 0.1                   # learning rate: default 0.01, 0 longer training to 1
+EPSILON = 0.9               # greedy policy: default 0.9
+GAMMA = 0.99                 # reward discount: 0 shortsighted to 1 farsighted
 TARGET_REPLACE_ITER = 100   # target update frequency
 MEMORY_CAPACITY = 2000
 env = gym.make('cart-v0')
@@ -104,7 +104,7 @@ for i_episode in range(50):
     s = env.reset()
     ep_r = 0
     while True:
-        # env.render()
+        env.render()
         a = [dqn.choose_action(s), dqn.choose_action(s)]
 
         # take action

@@ -55,7 +55,7 @@ class CartEnv(gym.Env):
 
     def __init__(self):
         self.length = 0.15  # distance between point a and b NEED TO MEASURE IN METERS
-        self.power = 1  # scaling factor for actual distance NEED TO DETERMINE
+        self.power = 2  # scaling factor for actual distance NEED TO DETERMINE
         self.tau = 0.01  # seconds between state updates INCREASE = FASTER MOVEMENTS
         self.thetaCurr = 0  # initial and current angle
         # self.goal_x = 1
@@ -91,7 +91,8 @@ class CartEnv(gym.Env):
 
         self.seed()
         self.viewer = None
-        self.state = np.zeros((7, 1)) # initial velocity always forward
+        # self.state = np.zeros((7, 1))
+        self.state = np.array([1, 1, 0, 0, 0, 0, 0])  # initial velocity always forward
 
         self.steps_beyond_done = None
 
@@ -109,13 +110,13 @@ class CartEnv(gym.Env):
         # forcea = min(max(action[0], self.min_action), self.max_action)
         # forceb = min(max(action[1], self.min_action), self.max_action)
 
-        forces = np.linspace(-1, 1, 201) # according to jetbot physical capabilities
+        forces = np.linspace(-1, 1, 201)  # according to jetbot physical capabilities
 
         forcea = forces[action[0]]
         forceb = forces[action[1]]
 
         # scale accordingly
-        va = forcea * self.power # cm/s
+        va = forcea * self.power  # cm/s
         vb = forceb * self.power
 
         # set up solver
@@ -186,7 +187,8 @@ class CartEnv(gym.Env):
         return np.array(self.state), reward, done, {}
 
     def reset(self):
-        self.state = self.np_random.uniform(low=-0.05, high=0.05, size=(7,))  # need to look into
+        # self.state = self.np_random.uniform(low=-0.05, high=0.05, size=(7,))  # need to look into
+        self.state = np.array([1, 1, 0, 0, 0, 0, 0])
         self.steps_beyond_done = None
         return np.array(self.state)
 

@@ -54,17 +54,19 @@ class CartEnv(gym.Env):
     }
 
     def __init__(self):
+
+        self.num_carts = 3
         self.length = 0.15  # distance between point a and b NEED TO MEASURE IN METERS
         self.power = 2  # scaling factor for actual distance NEED TO DETERMINE
         self.tau = 0.01  # seconds between state updates INCREASE = FASTER MOVEMENTS
         self.thetaCurr = 0  # initial and current angle
         # self.goal_x = 1
         # self.goal_y = 1
-        self.kinematics_integrator = 'euler'
+        # self.kinematics_integrator = 'euler'
 
-        # Action Thresholds
-        self.min_action = 0
-        self.max_action = 100
+        # # Action Thresholds
+        # self.min_action = 0
+        # self.max_action = 100
 
         # State Thresholds
         self.max_position = 5
@@ -72,7 +74,7 @@ class CartEnv(gym.Env):
         self.max_angle = 180  # not sure if this is correct
 
         self.low_state = np.array(
-            [-self.max_speed, -self.max_speed, -self.max_angle, -self.max_position,
+            [-self.max_angle, -self.max_position,
              -self.max_position, -self.max_position, -self.max_position]
         )
         self.high_state = np.array(
@@ -81,7 +83,7 @@ class CartEnv(gym.Env):
         )
 
         # Action: continuous left, right motor control
-        self.action_space = spaces.Discrete(201)
+        self.action_space = spaces.Discrete(9*self.num_carts)
 
         self.observation_space = spaces.Box(
             low=self.low_state,
@@ -89,10 +91,15 @@ class CartEnv(gym.Env):
             dtype=np.float32
         )
 
+
+        self.carts = []
+        for i in range(self.num_carts):
+            self.carts.append(Cart())
+
         self.seed()
         self.viewer = None
         # self.state = np.zeros((7, 1))
-        self.state = np.array([1, 1, 0, 0, 0, 0, 0])  # initial velocity always forward
+        self.state = np.array([0, 0, 0])  # initial velocity always forward
 
         self.steps_beyond_done = None
 
@@ -101,67 +108,20 @@ class CartEnv(gym.Env):
         return [seed]
 
     def step(self, action):
-        # err_msg = "%r (%s) invalid" % (action, type(action))
-        # assert self.action_space.contains(action), err_msg
 
-        va, vb, theta, xa, xb, ya, yb = self.state  # define 7 states
+        for i, cart in enumerate(self.carts):
+            cart.step(action[9*i:9*(i+1)])
 
-        # action on each motor
-        # forcea = min(max(action[0], self.min_action), self.max_action)
-        # forceb = min(max(action[1], self.min_action), self.max_action)
 
-        forces = np.linspace(-1, 1, 201)  # according to jetbot physical capabilities
-
-        forcea = forces[action[0]]
-        forceb = forces[action[1]]
-
-        # scale accordingly
-        va = forcea * self.power  # cm/s
-        vb = forceb * self.power
-
-        # set up solver
-        def sol_angle(t, y, vb, va):
-            return (vb - va) / self.length
-
-        t_span = [0, self.tau]
-        sol = solve_ivp(sol_angle, t_span, [self.thetaCurr], args=(vb, va))
-
-        # determine angles for movement
-        costheta = math.cos(self.thetaCurr)
-        sintheta = math.sin(self.thetaCurr)
-
-        if self.kinematics_integrator == 'euler':
-            xa = xa + va * costheta * self.tau
-            ya = ya + va * sintheta * self.tau
-            xb = xb + vb * costheta * self.tau
-            yb = yb + vb * sintheta * self.tau
-            theta = sol.y[0][-1]
-
-        # For Scenario 2, better way is find ave position from a and b
-        # if xa < -self.max_position: xa = -self.max_position
-        # if xa > self.max_position: xa = self.max_position
-        # if xb < -self.max_position: xa = -self.max_position
-        # if xb > self.max_position: xa = self.max_position
-        # if ya < -self.max_position: xa = -self.max_position
-        # if ya > self.max_position: xa = self.max_position
-        # if yb < -self.max_position: xa = -self.max_position
-        # if yb > self.max_position: xa = self.max_position
-
-        # update state
-        self.thetaCurr = theta
-        self.state = (va, vb, theta, xa, xb, ya, yb)
 
         # Scenario 1: Stay inside a given box
         done = bool(
-            xa < -self.max_position
-            or xa > self.max_position
-            or xb < -self.max_position
-            or xb > self.max_position
-            or ya < -self.max_position
-            or ya > self.max_position
-            or yb < -self.max_position
-            or yb > self.max_position
+            xp < -self.max_position
+            or xp > self.max_position
+            or yp < -self.max_position
+            or yp > self.max_position
         )
+
         # Scenario 2: Reach a target
         # done = bool(
         #     xa >= self.goal_x and ya >= self.goal_y
@@ -188,7 +148,7 @@ class CartEnv(gym.Env):
 
     def reset(self):
         # self.state = self.np_random.uniform(low=-0.05, high=0.05, size=(7,))  # need to look into
-        self.state = np.array([1, 1, 0, 0, 0, 0, 0])
+        self.state = np.array([0, 0, 0])
         self.steps_beyond_done = None
         return np.array(self.state)
 
@@ -202,7 +162,7 @@ class CartEnv(gym.Env):
         cartheight = 40.0
 
         if self.state is not None:
-            va, vb, theta, xa, xb, ya, yb = self.state
+            theta, xp, yp = self.state
 
         if self.viewer is None:
             from gym.envs.classic_control import rendering
@@ -233,8 +193,8 @@ class CartEnv(gym.Env):
         if self.state is None:
             return None
 
-        cartx = scale*(xa + xb)/2 + screen_width/2.0  #
-        carty = scale*(ya + yb)/2 + screen_height/2.0  #
+        cartx = scale*xp + screen_width/2.0  #
+        carty = scale*yp + screen_height/2.0  #
         self.carttrans.set_translation(cartx, carty)
         self.carttrans.set_rotation(theta)
 

@@ -105,7 +105,8 @@ for i_episode in range(50):
     ep_r = 0
     while True:
         env.render()
-        a = [dqn.choose_action(s), dqn.choose_action(s)]
+
+        a = dqn.choose_action(s)
 
         # take action
         s_, r, done, info = env.step(a)

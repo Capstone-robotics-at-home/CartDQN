@@ -1,42 +1,99 @@
 from abc import ABC
 
 import numpy as np
+# import polytope as pt
 import gym
 from gym.envs.classic_control import rendering
 
 
 class Cart:
-    def __init__(self):
-        radius = [25.0, 10.0, 10.0]
-        res = 3  # 3-sided
-        points = [(np.cos(2 * np.pi * i / res) * radius[i], np.sin(2 * np.pi * i / res) * radius[i])
-                  for i in range(res)]
-        self.cart = rendering.FilledPolygon(points)
+    def __init__(self, scale):
+        self.length = 10.5  # distance between point a and b [cm]
+        self.power = 25  # scaling factor for actual distance NEED TO DETERMINE PER GROUND TYPE
+        self.tau = 0.01  # seconds between state updates INCREASE = FASTER MOVEMENTS
+        self.thetaCurr = 0  # initial and current angle
 
-    def new(self):
+        self.state = np.array([0, 0, 0])
+
+        # self.cumstate.theta = []
+        # self.cumstate.xp = []
+        # self.cumstate.yp = []
+
+        radius = np.array([3 * self.length / 2, self.length / 2, self.length / 2]) / scale
+        res = 3  # 3-sided
+        self.points = [np.array([np.cos(2 * np.pi * i / res) * radius[i], np.sin(2 * np.pi * i / res) * radius[i]])
+                  for i in range(res)]
+        # self.cart = pt.qhull(np.vstack([self.points[0], self.points[1], self.points[2]]))
+
+    def step(self, action):
+        theta, xp, yp = self.state  # define 3 states
+
+        forcea = (action // 3) - 1
+        forceb = (action % 3) - 1
+
+        # scale accordingly
+        va = forcea * self.power  # cm/s
+        vb = forceb * self.power
+
+        theta = self.thetaCurr + self.tau * (vb - va) / self.length
+
+        xp = xp + 0.5*(va+vb)*np.cos(self.thetaCurr)*self.tau
+        yp = yp + 0.5*(va+vb)*np.sin(self.thetaCurr)*self.tau
+
+        # update state
+        self.thetaCurr = theta
+        self.state = (theta, xp, yp)
+
+        # self.cumstate.theta.append(theta)
+        # self.cumstate.xp.append(xp)
+        # self.cumstate.yp.append(yp)
+
+        return np.array(self.state)
+
+    def reset(self):
+        # self.state = np.array([0, 0, 0])
+        pass
+
+    def render(self):
+        self.cart = rendering.FilledPolygon(self.points)
         return self.cart
 
 
 class Obstacle:
-    def __init__(self):
-        radius = 50.0
+    def __init__(self, num_obst, obst_x, obst_y):
+        self.obstacles = list()  # list of polytopes
+        self.num_obst = num_obst
+        self.obst_x = obst_x
+        self.obst_y = obst_y
+        radius = 30.0
         res = 4  # 4-sided
-        points = [(np.cos(2 * np.pi * i / res) * radius, np.sin(2 * np.pi * i / res) * radius)
+        self.points = [(np.cos(2 * np.pi * i / res) * radius, np.sin(2 * np.pi * i / res) * radius)
                   for i in range(res)]
-        self.obstacle = rendering.FilledPolygon(points)
 
-    def new(self):
-        return self.obstacle
+    def crash(self, cartx, carty):
+        pass
+
+    def render(self):
+        obst = np.array([])
+        for i in self.num_obst:
+            obst[i] = rendering.FilledPolygon(self.points)
+            obsttrans = rendering.Transform(translation=(self.obst_x[i], self.obst_y[i]))
+            obst[i].set_color(255, 0, 0)
+            obst[i].add_attr(obsttrans)
+        return obst
 
 
 class Goal:
-    def __init__(self):
-        radius = 50.0
-        res = 5  # star
-        points = [(np.cos(2 * np.pi * i / res) * radius, np.sin(2 * np.pi * i / res) * radius)
+    def __init__(self, goal_x, goal_y):
+        radius = 30.0
+        res = 4  # 4-sided
+        self.points = [(np.cos(2 * np.pi * i / res) * radius, np.sin(2 * np.pi * i / res) * radius)
                   for i in range(res)]
-        points = [points[0], points[2], points[4], points[1], points[3]]
-        self.goal = rendering.make_polygon(points, False)
 
-    def new(self):
+
+    def finished(self):
+        pass
+
+    def render(self):
+        self.goal = rendering.FilledPolygon(self.points)
         return self.goal

@@ -16,9 +16,9 @@ import gym
 import gym_cart
 
 # Hyper Parameters
-BATCH_SIZE = 64             # batch size: default 32, 1 to 100+
+BATCH_SIZE = 32             # batch size: default 32, 1 to 100+
 LR = 0.1                   # learning rate: default 0.01, 0 longer training to 1
-EPSILON = 0.9               # greedy policy: default 0.9
+EPSILON = 0.9               # greedy policy: default 0.9, change to 1 after training
 GAMMA = 0.99                 # reward discount: 0 shortsighted to 1 farsighted
 TARGET_REPLACE_ITER = 100   # target update frequency
 MEMORY_CAPACITY = 2000
@@ -27,6 +27,9 @@ env = env.unwrapped
 N_ACTIONS = env.action_space.n
 N_STATES = env.observation_space.shape[0]
 ENV_A_SHAPE = 0 if isinstance(env.action_space.sample(), int) else env.action_space.sample().shape  # confirm the shape
+
+# dqn = DQN()
+# dqn.eval_net=torch.load('Cart.pkl')
 
 
 class Net(nn.Module):
@@ -47,10 +50,9 @@ class Net(nn.Module):
 class DQN(object):
     def __init__(self):
         self.eval_net, self.target_net = Net(), Net()
-
         self.learn_step_counter = 0                                     # for target updating
         self.memory_counter = 0                                         # for storing memory
-        self.memory = np.zeros((MEMORY_CAPACITY, N_STATES * 2 + 3))     # initialize memory
+        self.memory = np.zeros((MEMORY_CAPACITY, N_STATES * 2 + 2))     # initialize memory
         self.optimizer = torch.optim.Adam(self.eval_net.parameters(), lr=LR)
         self.loss_func = nn.MSELoss()
 
@@ -67,7 +69,7 @@ class DQN(object):
         return action
 
     def store_transition(self, s, a, r, s_):
-        transition = np.hstack((s, [a[0], a[1], r], s_))
+        transition = np.hstack((s, [a, r], s_))
         # replace the old memory with new memory
         index = self.memory_counter % MEMORY_CAPACITY
         self.memory[index, :] = transition
@@ -97,6 +99,7 @@ class DQN(object):
         loss.backward()
         self.optimizer.step()
 
+
 dqn = DQN()
 
 print('\nCollecting experience...')
@@ -105,17 +108,18 @@ for i_episode in range(50):
     ep_r = 0
     while True:
         env.render()
-        a = [dqn.choose_action(s), dqn.choose_action(s)]
 
+        a = dqn.choose_action(s)
+        # print(a)
         # take action
         s_, r, done, info = env.step(a)
 
-        # modify the reward (why would we need to do this?)
-        va, vb, theta, xa, xb, ya, yb = s_
-        r1 = (env.max_position - abs(xa)) / env.max_position
-        r2 = (env.max_position - abs(ya)) / env.max_position
-        r = r1 + r2
+        # modify the reward
 
+        theta, xp, yp = s_
+        # r1 = (env.max_position - abs(xp)) / env.max_position
+        # r2 = (env.max_position - abs(yp)) / env.max_position
+        # r = r1 + r2
         dqn.store_transition(s, a, r, s_)
 
         ep_r += r
@@ -128,3 +132,5 @@ for i_episode in range(50):
         if done:
             break
         s = s_
+
+# torch.save(dqn.eval_net, 'Cart.pkl')

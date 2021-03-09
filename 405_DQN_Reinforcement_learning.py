@@ -15,6 +15,12 @@ import numpy as np
 import gym
 import gym_cart
 
+# Values from Camera Vision
+goal_x = np.array([0, 120, 350])
+goal_y = np.array([0, 200, 300])
+obst_x = np.array([50])
+obst_y = np.array([50])
+
 # Hyper Parameters
 BATCH_SIZE = 32             # batch size: default 32, 1 to 100+
 LR = 0.1                   # learning rate: default 0.01, 0 longer training to 1
@@ -22,11 +28,12 @@ EPSILON = 0.9               # greedy policy: default 0.9, change to 1 after trai
 GAMMA = 0.99                 # reward discount: 0 shortsighted to 1 farsighted
 TARGET_REPLACE_ITER = 100   # target update frequency
 MEMORY_CAPACITY = 2000
-env = gym.make('cart-v0')
+env = gym.make('cart-v0', goal_x=goal_x, goal_y=goal_y, obst_x=obst_x, obst_y=obst_y)
 env = env.unwrapped
 N_ACTIONS = env.action_space.n
 N_STATES = env.observation_space.shape[0]
 ENV_A_SHAPE = 0 if isinstance(env.action_space.sample(), int) else env.action_space.sample().shape  # confirm the shape
+
 
 # dqn = DQN()
 # dqn.eval_net=torch.load('Cart.pkl')
@@ -113,6 +120,7 @@ for i_episode in range(50):
         # print(a)
         # take action
         s_, r, done, info = env.step(a)
+        # print(r)
 
         # modify the reward
 
@@ -128,9 +136,14 @@ for i_episode in range(50):
             if done:
                 print('Ep: ', i_episode,
                       '| Ep_r: ', round(ep_r, 2))
+        if ep_r < -10:
+            print('Ep: ', i_episode,
+                  '| Ep_r: ', round(ep_r, 2))
+            break
 
         if done:
             break
         s = s_
+        # print(s)
 
 # torch.save(dqn.eval_net, 'Cart.pkl')

@@ -52,26 +52,34 @@ class CartEnv(gym.Env):
         'video.frames_per_second': 50
     }
 
-    def __init__(self):
+    def __init__(self, goal_x, goal_y, obst_x, obst_y):
 
         self.num_carts = 1  # define no of carts
         self.num_obstacles = 1  # define no of obstacles
 
         # State Thresholds
+        self.min_position = 0  # [cm]
         self.max_position = 500  # [cm]
         self.max_speed = 300  # need to understand scale better
         self.max_angle = 180  # not sure if this is correct
 
-        # Goals
-        self.goal_x = 350
-        self.goal_y = 350
 
         self.low_state = np.array(
-            [-self.max_angle, -self.max_position, -self.max_position]
+            [-self.max_angle, self.min_position, self.min_position]
         )
         self.high_state = np.array(
-            [-self.max_angle, -self.max_position, -self.max_position]
+            [-self.max_angle, self.max_position, self.max_position]
         )
+        # Goals
+        self.goal_x = goal_x
+        self.goal_y = goal_y
+        self.terminal_x = goal_x[-1]
+        self.terminal_y = goal_y[-1]
+        self.num_goals = 0
+
+        # Obstacles
+        self.obst_x = obst_x
+        self.obst_y = obst_y
 
         # Action: 9 possible movements per cart
         self.action_space = spaces.Discrete(9*self.num_carts)
@@ -82,11 +90,14 @@ class CartEnv(gym.Env):
             dtype=np.float32
         )
 
+        # Reward info
+        self.done = False
+
         # Render info
         self.screen_width = 500
         self.screen_height = 500
 
-        self.world_width = self.max_position * 2
+        self.world_width = self.max_position
         self.scale = self.screen_width / self.world_width
 
         # Initialize cart data
@@ -96,7 +107,7 @@ class CartEnv(gym.Env):
 
         self.seed()
         self.viewer = None
-        self.state = np.array([0, 0, 0])
+        self.state = np.array([0, 75, 450])
 
         self.steps_beyond_done = None
 
@@ -113,35 +124,60 @@ class CartEnv(gym.Env):
         theta, xp, yp = self.state
 
         # Scenario 1: Stay inside a given box
-        done = bool(
-            xp < -self.max_position
-            or xp > self.max_position
-            or yp < -self.max_position
-            or yp > self.max_position
-        )
-
-        # Scenario 2a: Crashed into obstacle (neg reward)
-        # crash = bool(
-        #     xp < -self.max_position
+        # done = bool(
+        #     xp < self.min_position
         #     or xp > self.max_position
-        #     or yp < -self.max_position
+        #     or yp < self.min_position
         #     or yp > self.max_position
         # )
 
-        # Scenario 2b: Reached goal (pos reward)
-        done = bool(
-            xp == self.goal_x
-            and yp == self.goal_y
+        # Scenario 2a: Crashed into obstacle (neg reward)
+        for i in range(len(self.obst_x)):
+            crash = bool(
+                xp < self.min_position
+                or xp > self.max_position
+                or yp < self.min_position
+                or yp > self.max_position
+                or abs(xp - self.obst_x[i]) <= 35 and abs(yp - self.obst_y[i]) <= 35
+            )
+            if crash:
+                break
+
+        # Scenario 2b: Reached single goal (pos reward)
+        for i in range(len(self.goal_x)):
+            goal = bool(
+                abs(xp - self.goal_x[i]) <= 30 and abs(yp - self.goal_y[i]) <= 30
+            )
+            if goal:
+                self.num_goals += 1  # increase num_goals found
+                self.goal_x = np.delete(self.goal_x, i)  # remove found goal from original list
+                self.goal_y = np.delete(self.goal_y, i)
+                break
+
+        # Scenario 2c: Reached terminal goal (largest pos reward)
+        self.done = bool(
+            xp == self.goal_x[-1]
+            and yp == self.goal_y[-1]
         )
 
+        # Scenario 2d: Nothing (neg reward to improve time)
+
+        # Initialize reward
         reward = 0.0
 
-        if not done:
-            reward = 1 / np.sqrt((self.goal_x - xp)**2 + (self.goal_y - yp)**2)
-        if done:
-            reward = 1000
-        #     # for i in range(num_obst):
-        #     #     reward = reward + np.sqrt((xp - xobst))
+        if not self.done:
+            if crash:
+                reward = -1.0
+                crash = False
+                # reward = - 1 + 1 / np.sqrt((goal_x[2] - xp)**2 + (goal_y[2] - yp)**2)
+            if goal:
+                reward = 1.0
+                goal = False
+            else:
+                reward = -0.01
+        if self.done:
+            reward = 10.0*self.num_goals
+
         # elif self.steps_beyond_done is None:  # not sure what any of these conditions are
         #     # Cart just exited!
         #     self.steps_beyond_done = 0
@@ -157,12 +193,15 @@ class CartEnv(gym.Env):
         #     self.steps_beyond_done += 1
         #     reward = 0.0
 
-        return np.array(self.state), reward, done, {}
+        self.done = crash
+        # print(self.num_goals)
+        return np.array(self.state), reward, self.done, {}
 
     def reset(self):
         # self.state = self.np_random.uniform(low=-0.05, high=0.05, size=(7,))  # need to look into
-        self.state = np.array([0, 0, 0])
+        self.state = np.array([0, 50, 450])
         # self.steps_beyond_done = None
+        self.done = False
         return np.array(self.state)
 
     def render(self, mode='human'):
@@ -175,43 +214,33 @@ class CartEnv(gym.Env):
 
             cart = Cart(self.scale)  # instantiate class instance
             cart = cart.render()  # call method for Cart
-            self.carttrans = rendering.Transform()
+            self.carttrans = rendering.Transform(translation=(50, 450))
             cart.add_attr(self.carttrans)
             self.viewer.add_geom(cart)
 
-            # obst1 = Obstacle(None, None, None)  # instantiate class instance
-            # obst1 = obst1.render()  # call method for Obstacle
-            # self.obsttrans = rendering.Transform(translation=(300, 300)) # set object position
-            # obst1.set_color(255, 0, 0)
-            # obst1.add_attr(self.obsttrans)
-            # self.viewer.add_geom(obst1)
-            #
-            # obst2 = Obstacle(None, None, None)  # instantiate class instance
-            # obst2 = obst2.new()  # call method for Obstacle
-            # self.obsttrans = rendering.Transform(translation=(150, 200))  # set object position
-            # obst2.set_color(255, 0, 0)
-            # obst2.add_attr(self.obsttrans)
-            # self.viewer.add_geom(obst2)
-            #
-            # obst3 = Obstacle(None, None, None)  # instantiate class instance
-            # obst3 = obst3.new()  # call method for Obstacle
-            # self.obsttrans = rendering.Transform(translation=(325, 400))  # set object position
-            # obst3.set_color(255, 0, 0)
-            # obst3.add_attr(self.obsttrans)
-            # self.viewer.add_geom(obst3)
-            #
-            goal = Goal(None, None)  # instantiate class instance
-            goal = goal.render()  # call method for Goal
-            self.goaltrans = rendering.Transform(translation=(350, 350))
-            goal.set_color(0, 255, 0)
-            goal.add_attr(self.goaltrans)
-            self.viewer.add_geom(goal)
+            obst = []
+            for i in range(len(self.obst_x)):
+                obst.append(Obstacle(None, None))  # instantiate class instance
+                obst[i] = obst[i].render()  # call method for Goal
+                self.obsttrans = rendering.Transform(translation=(self.obst_x[i], self.obst_y[i]))
+                obst[i].set_color(255, 0, 0)
+                obst[i].add_attr(self.obsttrans)
+                self.viewer.add_geom(obst[i])
+
+            goal = []
+            for i in range(len(self.goal_x)):
+                goal.append(Goal(None, None))  # instantiate class instance
+                goal[i] = goal[i].render()  # call method for Goal
+                self.goaltrans = rendering.Transform(translation=(self.goal_x[i], self.goal_y[i]))
+                goal[i].set_color(0, 255, 0)
+                goal[i].add_attr(self.goaltrans)
+                self.viewer.add_geom(goal[i])
 
         if self.state is None:
             return None
 
-        cartx = self.scale*xp + self.screen_width/2.0  #
-        carty = self.scale*yp + self.screen_height/2.0  #
+        cartx = self.scale*xp
+        carty = self.scale*yp
         self.carttrans.set_translation(cartx, carty)
         self.carttrans.set_rotation(theta)
 

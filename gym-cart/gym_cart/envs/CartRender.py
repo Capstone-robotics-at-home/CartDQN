@@ -51,8 +51,8 @@ class Cart:
         return np.array(self.state)
 
     def reset(self):
-        # self.state = np.array([0, 0, 0])
-        pass
+        self.state = np.array([0, 50, 450])
+        return(self.state)
 
     def render(self):
         cart = rendering.FilledPolygon(self.points)

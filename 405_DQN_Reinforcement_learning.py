@@ -14,26 +14,30 @@ import torch.nn.functional as F
 import numpy as np
 import gym
 import gym_cart
+import matplotlib
+from matplotlib import pyplot as plt
 
 # Values from Camera Vision
-goal_x = np.array([0, 120, 350])
-goal_y = np.array([0, 200, 300])
+goal_x = np.array([200, 120, 350])
+goal_y = np.array([450, 200, 300])
 obst_x = np.array([50])
 obst_y = np.array([50])
 
 # Hyper Parameters
 BATCH_SIZE = 32             # batch size: default 32, 1 to 100+
-LR = 0.1                   # learning rate: default 0.01, 0 longer training to 1
-EPSILON = 0.9               # greedy policy: default 0.9, change to 1 after training
-GAMMA = 0.99                 # reward discount: 0 shortsighted to 1 farsighted
-TARGET_REPLACE_ITER = 100   # target update frequency
-MEMORY_CAPACITY = 2000
+LR = 0.001                   # learning rate: default 0.01, 0 longer training to 1
+EPSILON = 0.9               # greedy policy: default 0.9, change to 1 after training or add decay rate
+GAMMA = 0.999                 # reward discount: 0 shortsighted to 1 farsighted
+TARGET_REPLACE_ITER = 10   # target update frequency
+MEMORY_CAPACITY = 10
+N_EPS = 10000
 env = gym.make('cart-v0', goal_x=goal_x, goal_y=goal_y, obst_x=obst_x, obst_y=obst_y)
 env = env.unwrapped
 N_ACTIONS = env.action_space.n
 N_STATES = env.observation_space.shape[0]
 ENV_A_SHAPE = 0 if isinstance(env.action_space.sample(), int) else env.action_space.sample().shape  # confirm the shape
 
+reward = np.zeros(N_EPS)
 
 # dqn = DQN()
 # dqn.eval_net=torch.load('Cart.pkl')
@@ -110,12 +114,11 @@ class DQN(object):
 dqn = DQN()
 
 print('\nCollecting experience...')
-for i_episode in range(50):
-    s = env.reset()
+for i_episode in range(N_EPS):
+    s = env.reset(goal_x, goal_y)
     ep_r = 0
     while True:
-        env.render()
-
+        # env.render()
         a = dqn.choose_action(s)
         # print(a)
         # take action
@@ -133,17 +136,20 @@ for i_episode in range(50):
         ep_r += r
         if dqn.memory_counter > MEMORY_CAPACITY:
             dqn.learn()
-            if done:
-                print('Ep: ', i_episode,
-                      '| Ep_r: ', round(ep_r, 2))
-        if ep_r < -10:
-            print('Ep: ', i_episode,
-                  '| Ep_r: ', round(ep_r, 2))
-            break
+            # if done:
+            #     print('Ep: ', i_episode,
+            #           '| Ep_r: ', round(ep_r, 2))
 
         if done:
+            reward[i_episode] = r
             break
         s = s_
         # print(s)
 
+eps = np.linspace(1, N_EPS, N_EPS)
+plt.plot(eps, reward)
+# print ave reward also
+plt.ylabel('Reward')
+plt.xlabel('Eps')
+plt.show()
 # torch.save(dqn.eval_net, 'Cart.pkl')

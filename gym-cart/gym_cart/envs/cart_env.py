@@ -92,6 +92,7 @@ class CartEnv(gym.Env):
 
         # Reward info
         self.done = False
+        self.crash = False
 
         # Render info
         self.screen_width = 500
@@ -109,7 +110,7 @@ class CartEnv(gym.Env):
         self.viewer = None
         self.state = np.array([0, 75, 450])
 
-        self.steps_beyond_done = None
+        self.steps = 0
 
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
@@ -131,22 +132,22 @@ class CartEnv(gym.Env):
         #     or yp > self.max_position
         # )
 
-        # Scenario 2a: Crashed into obstacle (neg reward)
+        # Scenario 2a: Crashed into bounds or obstacle (neg reward)
         for i in range(len(self.obst_x)):
-            crash = bool(
+            self.crash = bool(
                 xp < self.min_position
                 or xp > self.max_position
                 or yp < self.min_position
                 or yp > self.max_position
-                or abs(xp - self.obst_x[i]) <= 35 and abs(yp - self.obst_y[i]) <= 35
+                or abs(xp - self.obst_x[i]) <= 40 and abs(yp - self.obst_y[i]) <= 40
             )
-            if crash:
+            if self.crash:
                 break
 
         # Scenario 2b: Reached single goal (pos reward)
         for i in range(len(self.goal_x)):
             goal = bool(
-                abs(xp - self.goal_x[i]) <= 30 and abs(yp - self.goal_y[i]) <= 30
+                abs(xp - self.goal_x[i]) <= 50 and abs(yp - self.goal_y[i]) <= 50
             )
             if goal:
                 self.num_goals += 1  # increase num_goals found
@@ -165,18 +166,23 @@ class CartEnv(gym.Env):
         # Initialize reward
         reward = 0.0
 
-        if not self.done:
-            if crash:
-                reward = -1.0
-                crash = False
-                # reward = - 1 + 1 / np.sqrt((goal_x[2] - xp)**2 + (goal_y[2] - yp)**2)
-            if goal:
-                reward = 1.0
-                goal = False
-            else:
-                reward = -0.01
         if self.done:
             reward = 10.0*self.num_goals
+        if not self.done:
+            if self.crash:
+                reward = -10.0
+                self.done = self.crash
+                # reward = - 1 + 1 / np.sqrt((goal_x[2] - xp)**2 + (goal_y[2] - yp)**2)
+            if goal:
+                reward = 10.0
+                goal = False
+            # if action is not 8:
+            #     reward = -0.1
+            # else:
+            #     reward = -0.01
+
+        if self.steps >= 10000:
+            self.done = True
 
         # elif self.steps_beyond_done is None:  # not sure what any of these conditions are
         #     # Cart just exited!
@@ -193,15 +199,22 @@ class CartEnv(gym.Env):
         #     self.steps_beyond_done += 1
         #     reward = 0.0
 
-        self.done = crash
+        # print(crash)
+
+        self.steps += 1
         # print(self.num_goals)
         return np.array(self.state), reward, self.done, {}
 
-    def reset(self):
-        # self.state = self.np_random.uniform(low=-0.05, high=0.05, size=(7,))  # need to look into
-        self.state = np.array([0, 50, 450])
-        # self.steps_beyond_done = None
+    def reset(self, goal_x, goal_y):
+        self.state = self.carts[0].reset()
         self.done = False
+        self.crash = False
+        self.goal_x = goal_x
+        self.goal_y = goal_y
+        self.terminal_x = goal_x[-1]
+        self.terminal_y = goal_y[-1]
+        self.num_goals = 0
+        self.steps = 0
         return np.array(self.state)
 
     def render(self, mode='human'):

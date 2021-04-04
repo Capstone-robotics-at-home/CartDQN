@@ -55,14 +55,14 @@ class CartEnv(gym.Env):
     def __init__(self, goal_x, goal_y, obst_x, obst_y):
 
         self.num_carts = 1  # define no of carts
+        self.cart_length = 10.5  # distance between a and b
         self.num_obstacles = 1  # define no of obstacles
 
         # State Thresholds
         self.min_position = 0  # [cm]
-        self.max_position = 500  # [cm]
+        self.max_position = 50  # [cm]
         self.max_speed = 300  # need to understand scale better
         self.max_angle = 180  # not sure if this is correct
-
 
         self.low_state = np.array(
             [-self.max_angle, self.min_position, self.min_position]
@@ -76,13 +76,15 @@ class CartEnv(gym.Env):
         self.terminal_x = goal_x[-1]
         self.terminal_y = goal_y[-1]
         self.num_goals = 0
+        self.goal_radius = 2
 
         # Obstacles
         self.obst_x = obst_x
         self.obst_y = obst_y
+        self.obst_radius = 2
 
-        # Action: 9 possible movements per cart
-        self.action_space = spaces.Discrete(9*self.num_carts)
+        # Action: 3 possible movements per cart
+        self.action_space = spaces.Discrete(3*self.num_carts)
 
         self.observation_space = spaces.Box(
             low=self.low_state,
@@ -101,14 +103,16 @@ class CartEnv(gym.Env):
         self.world_width = self.max_position
         self.scale = self.screen_width / self.world_width
 
-        # Initialize cart data
-        self.carts = []
-        for i in range(self.num_carts):
-            self.carts.append(Cart(self.scale))
-
         self.seed()
         self.viewer = None
-        self.state = np.array([0, 75, 450])
+
+        # Initialize cart data
+        self.state_start = np.array([0, 7.5, 10])
+        self.state = self.state_start
+
+        self.carts = []
+        for i in range(self.num_carts):
+            self.carts.append(Cart(self.scale, self.state_start, self.cart_length))
 
         self.steps = 0
 
@@ -135,11 +139,11 @@ class CartEnv(gym.Env):
         # Scenario 2a: Crashed into bounds or obstacle (neg reward)
         for i in range(len(self.obst_x)):
             self.crash = bool(
-                xp < self.min_position
-                or xp > self.max_position
-                or yp < self.min_position
-                or yp > self.max_position
-                or abs(xp - self.obst_x[i]) <= 40 and abs(yp - self.obst_y[i]) <= 40
+                xp - self.cart_length/2 < self.min_position
+                or xp + self.cart_length/2 > self.max_position
+                or yp - self.cart_length/2 < self.min_position
+                or yp + self.cart_length/2 > self.max_position
+                or abs(xp - self.obst_x[i]) <= self.obst_radius + self.cart_length/2 and abs(yp - self.obst_y[i]) <= self.obst_radius + self.cart_length/2
             )
             if self.crash:
                 break
@@ -147,7 +151,7 @@ class CartEnv(gym.Env):
         # Scenario 2b: Reached single goal (pos reward)
         for i in range(len(self.goal_x)):
             goal = bool(
-                abs(xp - self.goal_x[i]) <= 50 and abs(yp - self.goal_y[i]) <= 50
+                abs(xp - self.goal_x[i]) <= self.goal_radius and abs(yp - self.goal_y[i]) <= self.goal_radius
             )
             if goal:
                 self.num_goals += 1  # increase num_goals found
@@ -157,8 +161,7 @@ class CartEnv(gym.Env):
 
         # Scenario 2c: Reached terminal goal (largest pos reward)
         self.done = bool(
-            xp == self.goal_x[-1]
-            and yp == self.goal_y[-1]
+            self.goal_x.size == 0
         )
 
         # Scenario 2d: Nothing (neg reward to improve time)
@@ -183,21 +186,6 @@ class CartEnv(gym.Env):
 
         if self.steps >= 10000:
             self.done = True
-
-        # elif self.steps_beyond_done is None:  # not sure what any of these conditions are
-        #     # Cart just exited!
-        #     self.steps_beyond_done = 0
-        #     reward = 1.0
-        # else:
-        #     if self.steps_beyond_done == 0:
-        #         logger.warn(
-        #             "You are calling 'step()' even though this "
-        #             "environment has already returned done = True. You "
-        #             "should always call 'reset()' once you receive 'done = "
-        #             "True' -- any further steps are undefined behavior."
-        #         )
-        #     self.steps_beyond_done += 1
-        #     reward = 0.0
 
         # print(crash)
 
@@ -225,26 +213,25 @@ class CartEnv(gym.Env):
             from gym.envs.classic_control import rendering
             self.viewer = rendering.Viewer(self.screen_width, self.screen_height)
 
-            cart = Cart(self.scale)  # instantiate class instance
-            cart = cart.render()  # call method for Cart
+            cart = self.carts[0].render()  # call method for Cart
             self.carttrans = rendering.Transform(translation=(50, 450))
             cart.add_attr(self.carttrans)
             self.viewer.add_geom(cart)
 
             obst = []
             for i in range(len(self.obst_x)):
-                obst.append(Obstacle(None, None))  # instantiate class instance
+                obst.append(Obstacle(None, None, self.obst_radius*self.scale))  # instantiate class instance
                 obst[i] = obst[i].render()  # call method for Goal
-                self.obsttrans = rendering.Transform(translation=(self.obst_x[i], self.obst_y[i]))
+                self.obsttrans = rendering.Transform(translation=(self.obst_x[i]*self.scale, self.obst_y[i]*self.scale))
                 obst[i].set_color(255, 0, 0)
                 obst[i].add_attr(self.obsttrans)
                 self.viewer.add_geom(obst[i])
 
             goal = []
             for i in range(len(self.goal_x)):
-                goal.append(Goal(None, None))  # instantiate class instance
+                goal.append(Goal(None, None, self.goal_radius*self.scale))  # instantiate class instance
                 goal[i] = goal[i].render()  # call method for Goal
-                self.goaltrans = rendering.Transform(translation=(self.goal_x[i], self.goal_y[i]))
+                self.goaltrans = rendering.Transform(translation=(self.goal_x[i]*self.scale, self.goal_y[i]*self.scale))
                 goal[i].set_color(0, 255, 0)
                 goal[i].add_attr(self.goaltrans)
                 self.viewer.add_geom(goal[i])

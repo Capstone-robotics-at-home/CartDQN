@@ -7,29 +7,35 @@ from gym.envs.classic_control import rendering
 
 
 class Cart:
-    def __init__(self, scale):
-        self.length = 10.5  # distance between point a and b [cm]
-        self.power = 60  # WOOD scaling factor
+    def __init__(self, scale, state_start, cart_length):
+        self.scale = scale
+        self.length = cart_length  # distance between point a and b [dm]
+        self.power = 10  # WOOD scaling factor
         self.tau = 0.01  # seconds between state updates INCREASE = FASTER MOVEMENTS
         self.thetaCurr = 0  # initial and current angle
 
-        self.state = np.array([0, 50, 450])
+        self.state_start = state_start
+        self.state = self.state_start
 
-        # self.cumstate.theta = []
-        # self.cumstate.xp = []
-        # self.cumstate.yp = []
-
-        radius = np.array([3 * self.length / 2, self.length / 2, self.length / 2]) / scale
+        radius = np.array([1.5 * self.length / 2, self.length / 2, self.length / 2])*self.scale
         res = 3  # 3-sided
         self.points = [np.array([np.cos(2 * np.pi * i / res) * radius[i], np.sin(2 * np.pi * i / res) * radius[i]])
                   for i in range(res)]
-        # self.cart = pt.qhull(np.vstack([self.points[0], self.points[1], self.points[2]]))
 
     def step(self, action):
         theta, xp, yp = self.state  # define 3 states
 
-        forcea = (action // 3) - 1
-        forceb = (action % 3) - 1
+        # forcea = (action // 3) - 1
+        # forceb = (action % 3) - 1
+        if action == 0:  # turn left
+            forcea = 1
+            forceb = 0
+        if action == 1:  # turn right
+            forcea = 0
+            forceb = 1
+        if action == 2:  # go forward
+            forcea = 1
+            forceb = 1
 
         # scale accordingly
         va = forcea * self.power  # cm/s
@@ -44,15 +50,12 @@ class Cart:
         self.thetaCurr = theta
         self.state = (theta, xp, yp)
 
-        # self.cumstate.theta.append(theta)
-        # self.cumstate.xp.append(xp)
-        # self.cumstate.yp.append(yp)
-
         return np.array(self.state)
 
     def reset(self):
-        self.state = np.array([0, 50, 450])
-        return(self.state)
+        self.state = self.state_start
+        self.thetaCurr = 0
+        return self.state
 
     def render(self):
         cart = rendering.FilledPolygon(self.points)
@@ -60,14 +63,11 @@ class Cart:
 
 
 class Obstacle:
-    def __init__(self, obst_x, obst_y):
+    def __init__(self, obst_x, obst_y, obst_rad):
         self.obstacles = list()  # list of polytopes
         self.obst_x = obst_x
         self.obst_y = obst_y
-        radius = 30.0
-        res = 4  # 4-sided
-        self.points = [(np.cos(2 * np.pi * i / res) * radius, np.sin(2 * np.pi * i / res) * radius)
-                  for i in range(res)]
+        self.obst_rad = obst_rad
 
     def crash(self, cartx, carty):
         pass
@@ -80,19 +80,16 @@ class Obstacle:
         #     obst[i].set_color(255, 0, 0)
         #     obst[i].add_attr(obsttrans)
         # return obst
-        obst = rendering.FilledPolygon(self.points)
+        obst = rendering.make_circle(radius=self.obst_rad, res=30, filled=True)
         return obst
 
 class Goal:
-    def __init__(self, goal_x, goal_y):
-        radius = 30.0
-        res = 4  # 4-sided
-        self.points = [(np.cos(2 * np.pi * i / res) * radius, np.sin(2 * np.pi * i / res) * radius)
-                  for i in range(res)]
+    def __init__(self, goal_x, goal_y, goal_rad):
+        self.goal_rad = goal_rad
 
     def finished(self):
         pass
 
     def render(self):
-        goal = rendering.FilledPolygon(self.points)
+        goal = rendering.make_circle(radius=self.goal_rad, res=30, filled=True)
         return goal
